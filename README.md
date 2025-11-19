@@ -1,6 +1,21 @@
 # MCP Server
 
-A simple Model Context Protocol (MCP) server implementation in Python.
+A powerful Model Context Protocol (MCP) server AND REST API in Python that provides:
+- 🗄️ SQL Server database operations
+- 🌤️ Weather information
+- 📁 File operations
+- 🌐 Web requests
+- 💻 System information
+- ➕ Utility tools
+
+## 🚀 Two Ways to Use
+
+### 1️⃣ MCP Protocol (For Claude Desktop & MCP-compatible LLMs)
+Traditional MCP server for direct integration with Claude Desktop
+
+### 2️⃣ REST API (For Any LLM or Application)
+FastAPI REST server that exposes all MCP tools as HTTP endpoints
+Perfect for LLMs that don't support MCP protocol (ChatGPT, Gemini, etc.)
 
 ## Installation
 
@@ -24,10 +39,25 @@ uv sync
 
 ## Running the Server
 
+### Option 1: MCP Server (for Claude Desktop)
+
 Run the MCP server:
 ```powershell
 uv run mcp-server
 ```
+
+### Option 2: REST API Server (for any LLM)
+
+Run the FastAPI REST API server:
+```powershell
+uv run mcp-api
+```
+
+Server will start at: **http://localhost:8000**
+- 📚 Interactive API docs: http://localhost:8000/docs
+- 📊 Alternative docs: http://localhost:8000/redoc
+
+See **[API_USAGE.md](API_USAGE.md)** for complete API documentation and examples.
 
 Or activate the virtual environment and run directly:
 ```powershell
@@ -37,10 +67,32 @@ python -m mcp_server
 
 ## Available Tools
 
-This server provides two example tools:
-
+### MCP Server Tools:
 1. **echo** - Echoes back the input message
 2. **add** - Adds two numbers together
+3. **read_file** - Reads content from a local file
+4. **write_file** - Writes content to a local file
+5. **system_info** - Returns system/OS/hardware information
+6. **web_request** - Makes HTTP GET requests to URLs
+7. **get_weather** - Gets current weather for any city
+8. **sql_query** - Executes SELECT queries on SQL Server database
+9. **list_tables** - Lists all tables in the database
+10. **describe_table** - Shows table structure (columns, types, etc.)
+
+### REST API Endpoints:
+All MCP tools are also available as HTTP endpoints:
+- `POST /echo` - Echo messages
+- `POST /add` - Add numbers
+- `POST /read-file` - Read files
+- `POST /write-file` - Write files
+- `GET /system-info` - System information
+- `POST /web-request` - HTTP requests
+- `POST /weather` - Weather data
+- `POST /sql/query` - SQL queries
+- `GET /sql/tables` - List tables
+- `POST /sql/describe` - Table structure
+
+See **[API_USAGE.md](API_USAGE.md)** for detailed API documentation.
 
 ## Project Structure
 
