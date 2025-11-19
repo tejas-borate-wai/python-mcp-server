@@ -3,11 +3,34 @@ import os
 import platform
 import psutil
 import requests
+import pyodbc
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 app = Server("supercharged-server")
+
+# ---------------------------
+# DATABASE CONFIGURATION
+# ---------------------------
+
+DB_CONFIG = {
+    "server": "localhost",
+    "database": "IntimeProDB",
+    "trusted_connection": "yes",
+    "trust_server_certificate": "yes"
+}
+
+def get_db_connection():
+    """Create and return a database connection."""
+    conn_str = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={DB_CONFIG['server']};"
+        f"DATABASE={DB_CONFIG['database']};"
+        f"Trusted_Connection={DB_CONFIG['trusted_connection']};"
+        f"TrustServerCertificate={DB_CONFIG['trust_server_certificate']};"
+    )
+    return pyodbc.connect(conn_str)
 
 
 # ---------------------------
@@ -97,7 +120,42 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["city"]
             }
+        ),
+        # SQL Server Database Tools
+        Tool(
+            name="sql_query",
+            description="Execute a SELECT query on the SQL Server database (IntimeProDB) and return results",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "SQL SELECT query to execute (read-only)"
+                    },
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="list_tables",
+            description="List all tables in the SQL Server database (IntimeProDB)",
+            inputSchema={"type": "object"}  # no input required
+        ),
+        Tool(
+            name="describe_table",
+            description="Get the schema/structure of a specific table (column names, types, etc.)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name of the table to describe"
+                    }
+                },
+                "required": ["table_name"]
+            }
         )
+
     ]
 
 
@@ -205,6 +263,125 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             
         except Exception as e:
             return [TextContent(type="text", text=f"❌ Error getting weather: {e}")]
+
+    elif name == "sql_query":
+        query = arguments["query"].strip()
+        
+        # Security: Only allow SELECT queries
+        if not query.upper().startswith("SELECT"):
+            return [TextContent(type="text", text="❌ Only SELECT queries are allowed for safety")]
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(query)
+            
+            # Get column names
+            columns = [desc[0] for desc in cursor.description]
+            
+            # Fetch results
+            rows = cursor.fetchall()
+            
+            if not rows:
+                result = "📊 Query executed successfully but returned no results."
+            else:
+                # Format results as a table
+                result = f"📊 Query Results ({len(rows)} rows):\n\n"
+                
+                # Header
+                result += "| " + " | ".join(columns) + " |\n"
+                result += "| " + " | ".join(["---" for _ in columns]) + " |\n"
+                
+                # Rows (limit to 100 for readability)
+                for i, row in enumerate(rows[:100]):
+                    row_values = [str(val) if val is not None else "NULL" for val in row]
+                    result += "| " + " | ".join(row_values) + " |\n"
+                
+                if len(rows) > 100:
+                    result += f"\n... and {len(rows) - 100} more rows"
+            
+            cursor.close()
+            conn.close()
+            
+            return [TextContent(type="text", text=result)]
+            
+        except Exception as e:
+            return [TextContent(type="text", text=f"❌ Database error: {str(e)}")]
+    
+    elif name == "list_tables":
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Query to get all user tables
+            query = """
+                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_TYPE = 'BASE TABLE'
+                ORDER BY TABLE_SCHEMA, TABLE_NAME
+            """
+            cursor.execute(query)
+            tables = cursor.fetchall()
+            
+            if not tables:
+                result = "📋 No tables found in the database."
+            else:
+                result = f"📋 Tables in IntimeProDB ({len(tables)} tables):\n\n"
+                for schema, table_name, table_type in tables:
+                    result += f"  • {schema}.{table_name}\n"
+            
+            cursor.close()
+            conn.close()
+            
+            return [TextContent(type="text", text=result)]
+            
+        except Exception as e:
+            return [TextContent(type="text", text=f"❌ Database error: {str(e)}")]
+    
+    elif name == "describe_table":
+        table_name = arguments["table_name"]
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Query to get column information
+            query = """
+                SELECT 
+                    COLUMN_NAME,
+                    DATA_TYPE,
+                    CHARACTER_MAXIMUM_LENGTH,
+                    IS_NULLABLE,
+                    COLUMN_DEFAULT
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            """
+            cursor.execute(query, table_name)
+            columns = cursor.fetchall()
+            
+            if not columns:
+                result = f"❌ Table '{table_name}' not found or has no columns."
+            else:
+                result = f"📊 Structure of table '{table_name}':\n\n"
+                result += "| Column | Type | Nullable | Default |\n"
+                result += "| --- | --- | --- | --- |\n"
+                
+                for col_name, data_type, max_length, nullable, default in columns:
+                    type_str = data_type
+                    if max_length:
+                        type_str += f"({max_length})"
+                    
+                    default_str = str(default) if default else ""
+                    result += f"| {col_name} | {type_str} | {nullable} | {default_str} |\n"
+            
+            cursor.close()
+            conn.close()
+            
+            return [TextContent(type="text", text=result)]
+            
+        except Exception as e:
+            return [TextContent(type="text", text=f"❌ Database error: {str(e)}")]
 
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
